@@ -1,5 +1,6 @@
 package frc.robot.Subsystems;
 
+import com.ctre.phoenix6.hardware.Pigeon2;
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
@@ -17,8 +18,16 @@ import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
+import static edu.wpi.first.units.Units.Degrees;
+
 import frc.robot.Constants.DriveConstants;
 
+/**
+ * Swerve drive subsystem: 4x Kraken X60, 4x CANcoder, Pigeon 2 IMU.
+ *
+ * Module order is FL, FR, BL, BR everywhere — matches KINEMATICS, setModuleStates(),
+ * and getModulePositions().
+ */
 public class DriveSubsystem extends SubsystemBase {
 
     private final SwerveModule frontLeft;
@@ -26,10 +35,11 @@ public class DriveSubsystem extends SubsystemBase {
     private final SwerveModule backLeft;
     private final SwerveModule backRight;
 
+    // FIX: was hardcoded to CAN ID 0 — swervedrive.json specifies id: 19
+    private final Pigeon2 pigeon;
+
     private final SwerveDriveOdometry odometry;
     private final Field2d field = new Field2d();
-
-    // ─── Constructor ──────────────────────────────────────────────────────────
 
     public DriveSubsystem() {
         frontLeft  = new SwerveModule(
@@ -52,18 +62,19 @@ public class DriveSubsystem extends SubsystemBase {
             DriveConstants.BR_CANCODER_ID, DriveConstants.BR_ENCODER_OFFSET_ROT,
             DriveConstants.BR_DRIVE_INVERTED);
 
-        // No gyro — odometry uses a fixed Rotation2d.fromDegrees(0) always
+        // FIX: use PIGEON_ID constant (19) instead of hardcoded 0
+        pigeon = new Pigeon2(DriveConstants.PIGEON_ID, DriveConstants.CAN_BUS_NAME);
+        pigeon.reset();
+
         odometry = new SwerveDriveOdometry(
             DriveConstants.KINEMATICS,
-            new Rotation2d(),
+            getHeading(),
             getModulePositions());
 
         SmartDashboard.putData("Field", field);
 
         configurePathPlanner();
     }
-
-    // ─── PathPlanner ──────────────────────────────────────────────────────────
 
     private void configurePathPlanner() {
         RobotConfig ppConfig;
@@ -96,10 +107,10 @@ public class DriveSubsystem extends SubsystemBase {
 
     @Override
     public void periodic() {
-        // No gyro — pass zero rotation to odometry
-        odometry.update(new Rotation2d(), getModulePositions());
+        odometry.update(getHeading(), getModulePositions());
         field.setRobotPose(getPose());
 
+        SmartDashboard.putNumber("Heading (deg)",  getHeading().getDegrees());
         SmartDashboard.putNumber("FL Angle (deg)", frontLeft.getAngle().getDegrees());
         SmartDashboard.putNumber("FR Angle (deg)", frontRight.getAngle().getDegrees());
         SmartDashboard.putNumber("BL Angle (deg)", backLeft.getAngle().getDegrees());
@@ -108,24 +119,30 @@ public class DriveSubsystem extends SubsystemBase {
         SmartDashboard.putNumber("FR Speed (mps)", frontRight.getDriveVelocityMps());
         SmartDashboard.putNumber("BL Speed (mps)", backLeft.getDriveVelocityMps());
         SmartDashboard.putNumber("BR Speed (mps)", backRight.getDriveVelocityMps());
-        
     }
 
     // ─── Drive API ────────────────────────────────────────────────────────────
 
     /**
-     * Robot-relative drive only — no field-relative without a gyro.
-     * fieldRelative parameter is accepted but ignored.
+     * @param xSpeed        Forward  [m/s]   +X = toward positive field X (forward)
+     * @param ySpeed        Strafe   [m/s]   +Y = toward positive field Y (left)
+     * @param rot           Rotation [rad/s] CCW positive
+     * @param fieldRelative true = field-oriented driving
      */
     public void drive(double xSpeed, double ySpeed, double rot, boolean fieldRelative) {
-        ChassisSpeeds speeds = new ChassisSpeeds(xSpeed, ySpeed, rot);
+        ChassisSpeeds speeds = fieldRelative
+            ? ChassisSpeeds.fromFieldRelativeSpeeds(ySpeed, xSpeed, rot, getHeading())
+            : new ChassisSpeeds(ySpeed, xSpeed, rot);
 
+        // discretize() compensates for translational drift caused by rotation over 20 ms
         speeds = ChassisSpeeds.discretize(speeds, 0.02);
+
         SwerveModuleState[] states = DriveConstants.KINEMATICS.toSwerveModuleStates(speeds);
         SwerveDriveKinematics.desaturateWheelSpeeds(states, DriveConstants.MAX_SPEED_MPS);
         setModuleStates(states);
     }
 
+    /** Drive using robot-relative ChassisSpeeds — called by PathPlanner. */
     public void driveRobotRelative(ChassisSpeeds speeds) {
         speeds = ChassisSpeeds.discretize(speeds, 0.02);
         SwerveModuleState[] states = DriveConstants.KINEMATICS.toSwerveModuleStates(speeds);
@@ -133,6 +150,7 @@ public class DriveSubsystem extends SubsystemBase {
         setModuleStates(states);
     }
 
+    /** Robot-relative ChassisSpeeds — used by PathPlanner for feedback. */
     public ChassisSpeeds getRobotRelativeSpeeds() {
         return DriveConstants.KINEMATICS.toChassisSpeeds(
             frontLeft.getState(),
@@ -158,6 +176,21 @@ public class DriveSubsystem extends SubsystemBase {
         backRight.stop();
     }
 
+    // ─── Gyro ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Robot heading, CCW positive (WPILib convention).
+     *
+     * Pigeon2 yaw increases CW when viewed from above, so we negate to get CCW+.
+     */
+    public Rotation2d getHeading() {
+        return Rotation2d.fromDegrees(pigeon.getYaw().getValue().in(Degrees));
+    }
+
+    public void zeroHeading() {
+        pigeon.reset();
+    }
+
     // ─── Odometry ─────────────────────────────────────────────────────────────
 
     public Pose2d getPose() {
@@ -165,7 +198,7 @@ public class DriveSubsystem extends SubsystemBase {
     }
 
     public void resetOdometry(Pose2d pose) {
-        odometry.resetPosition(new Rotation2d(), getModulePositions(), pose);
+        odometry.resetPosition(getHeading(), getModulePositions(), pose);
     }
 
     private SwerveModulePosition[] getModulePositions() {
