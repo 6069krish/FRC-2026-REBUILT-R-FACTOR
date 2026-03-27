@@ -1,6 +1,7 @@
 package frc.robot;
 
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.util.Units;
 
@@ -27,15 +28,15 @@ public final class Constants {
 
         public static final int PIGEON_ID = 19;
 
-        public static final boolean FL_DRIVE_INVERTED = false;
-        public static final boolean FR_DRIVE_INVERTED = false;
+        public static final boolean FL_DRIVE_INVERTED = true;
+        public static final boolean FR_DRIVE_INVERTED = true;
         public static final boolean BL_DRIVE_INVERTED = true;
-        public static final boolean BR_DRIVE_INVERTED = true;
+        public static final boolean BR_DRIVE_INVERTED = false;
 
         public static final double FL_ENCODER_OFFSET_ROT =  0.38;
-        public static final double FR_ENCODER_OFFSET_ROT = -0.015;
-        public static final double BL_ENCODER_OFFSET_ROT = -0.172;
-        public static final double BR_ENCODER_OFFSET_ROT =  0.2;
+        public static final double FR_ENCODER_OFFSET_ROT = -0.01;
+        public static final double BL_ENCODER_OFFSET_ROT =  0.325;
+        public static final double BR_ENCODER_OFFSET_ROT =  0.21;
 
         public static final double DRIVE_GEAR_RATIO = 6.12;
         public static final double STEER_GEAR_RATIO = 150.0 / 7.0;
@@ -43,8 +44,8 @@ public final class Constants {
         public static final double WHEEL_DIAMETER_METERS = Units.inchesToMeters(4.0);
         public static final double WHEEL_CIRCUMFERENCE   = Math.PI * WHEEL_DIAMETER_METERS;
 
-        public static final double MAX_SPEED_MPS         = 4.5;
-        public static final double MAX_ANGULAR_SPEED_RPS = 2.0 * Math.PI;
+        public static final double MAX_SPEED_MPS         = 3.5;
+        public static final double MAX_ANGULAR_SPEED_RPS = 3.0 * Math.PI;
 
         public static final SwerveDriveKinematics KINEMATICS = new SwerveDriveKinematics(
             new Translation2d( WHEEL_BASE_METERS / 2,  TRACK_WIDTH_METERS / 2),
@@ -77,8 +78,8 @@ public final class Constants {
     }
 
     public static final class IntakeConstants {
-        public static final int INTAKE_ROLLER_ID = 25;
-        public static final int INTAKE_PIVOT_ID  = 27;
+        public static final int INTAKE_ROLLER_ID = 26;
+        public static final int INTAKE_PIVOT_ID  = 25;
 
         public static final double PIVOT_kP = 2.0;
         public static final double PIVOT_kI = 0.0;
@@ -89,8 +90,8 @@ public final class Constants {
         public static final double PIVOT_RETRACTED_ROT =  0.0;
         public static final double PIVOT_GEAR_RATIO    = 25.0;
 
-        public static final double ROLLER_INTAKE_SPEED  =  0.7;
-        public static final double ROLLER_OUTTAKE_SPEED = -0.5;
+        public static final double ROLLER_INTAKE_SPEED  =  0.6;
+        public static final double ROLLER_OUTTAKE_SPEED = -0.6;
 
         public static final double ROLLER_SUPPLY_LIMIT = 40;
         public static final double PIVOT_SUPPLY_LIMIT  = 40;
@@ -98,10 +99,10 @@ public final class Constants {
     }
 
     public static final class FeederConstants {
-        public static final int FEEDER_ID = 26;
+        public static final int FEEDER_ID = 27;
 
-        public static final double FEEDER_SPEED         =  0.6;
-        public static final double FEEDER_REVERSE_SPEED = -0.4;
+        public static final double FEEDER_SPEED         = -0.2;
+        public static final double FEEDER_REVERSE_SPEED = 0.2;
 
         public static final double FEEDER_SUPPLY_LIMIT = 40;
         public static final double FEEDER_STATOR_LIMIT = 60;
@@ -113,20 +114,39 @@ public final class Constants {
         public static final int SHOOTER_3_ID = 23;
         public static final int SHOOTER_4_ID = 24;
 
-        public static final double SHOOTER_kP = 0.05;
+        public static final double SHOOTER_kP = 0.55;
         public static final double SHOOTER_kI = 0.0;
-        public static final double SHOOTER_kD = 0.0;
-        public static final double SHOOTER_kV = 0.12;
-        public static final double SHOOTER_kS = 0.1;
+        public static final double SHOOTER_kD = 0.01;
+        public static final double SHOOTER_kV = 0.0957;
+        public static final double SHOOTER_kS = 0.0;
 
-        public static final double SHOOT_VELOCITY_RPS   =  53.0;
-        public static final double REVERSE_VELOCITY_RPS = -20.0;
+        public static final double SHOOT_VELOCITY_RPS   =  47.0;
+        public static final double REVERSE_VELOCITY_RPS = -53.0;
         public static final double SHOOTER_4_INTAKE_RPS =  100.0;
 
         public static final double SHOOTER_SUPPLY_LIMIT = 60;
         public static final double SHOOTER_STATOR_LIMIT = 80;
 
-        public static final double VELOCITY_TOLERANCE_RPS = 2.0;
+        public static final double VELOCITY_TOLERANCE_RPS = 5.0;
+    
+
+        // ─── Distance → RPS Lookup Table ──────────────────────────────────────
+        // Key   = distance from target in METERS  (measured from Limelight)
+        // Value = shooter flywheel speed in RPS
+        // ⚠️  Tune these values by shooting from known distances and recording
+        //     what RPS consistently scores. Add/remove rows as needed.
+        public static final InterpolatingDoubleTreeMap SHOOTER_MAP =
+            new InterpolatingDoubleTreeMap();
+
+        static {
+            SHOOTER_MAP.put(0.0, 40.0);
+            SHOOTER_MAP.put(1.18, 54.5);
+            SHOOTER_MAP.put(1.39, 54.0);
+            SHOOTER_MAP.put(1.63, 56.5);
+            SHOOTER_MAP.put(2.44, 65.0);
+            SHOOTER_MAP.put(3.27, 69.89);
+            SHOOTER_MAP.put(20.0,100.0);
+        }
     }
 
     public static final class LimelightConstants {
